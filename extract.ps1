@@ -14,6 +14,10 @@
     Optional path to a CSV file that will contain the classification results. Defaults to
     ./graph-group-origin.csv in the current directory.
 
+.PARAMETER ExcelOutputPath
+    Optional path to an XLSX file. When provided, the script will also export the classification
+    using ImportExcel's Export-Excel cmdlet. Requires the ImportExcel module.
+
 .PARAMETER PassThru
     Write the resulting objects to the pipeline in addition to exporting them to disk.
 
@@ -29,6 +33,10 @@
 .EXAMPLE
     # Use a custom list and capture the output CSV path
     ./extract.ps1 -GroupNames "DEV-ATD","SQL-00-PBI-Sync" -OutputPath ./custom.csv -PassThru
+
+.EXAMPLE
+    # Export only to Excel (skipping CSV) and emit objects to the pipeline
+    ./extract.ps1 -OutputPath '' -ExcelOutputPath ./group-origin.xlsx -PassThru
 #>
 
 [CmdletBinding()]
@@ -72,7 +80,9 @@ param(
         "DEV-IC-FITS",
         "SQL-00-PBI-Sync"
     ),
+    [AllowEmptyString()]
     [string]$OutputPath = (Join-Path -Path (Get-Location) -ChildPath "graph-group-origin.csv"),
+    [string]$ExcelOutputPath,
     [switch]$PassThru,
     [switch]$SkipLogin
 )
@@ -89,6 +99,14 @@ function Assert-GraphModuleLoaded {
     Import-Module Microsoft.Graph.Groups -ErrorAction Stop | Out-Null
 }
 
+function Assert-ImportExcelModule {
+    if (-not (Get-Module -ListAvailable -Name ImportExcel)) {
+        throw "ImportExcel module is required for Excel export. Install it via 'Install-Module ImportExcel -Scope CurrentUser'."
+    }
+
+    Import-Module ImportExcel -ErrorAction Stop | Out-Null
+}
+
 function Ensure-GraphConnection {
     param([string[]]$Scopes = @("Group.Read.All"))
 
@@ -101,6 +119,16 @@ function Ensure-GraphConnection {
         Write-Verbose "Connecting to Microsoft Graph..."
         Connect-MgGraph -Scopes $Scopes | Out-Null
     }
+}
+
+function Resolve-OutputPath {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return $PathValue
+    }
+
+    return (Join-Path -Path (Get-Location) -ChildPath $PathValue)
 }
 
 function Get-ObjectPropertyValue {
@@ -271,16 +299,28 @@ foreach ($groupName in $normalizedNames) {
 
 $classificationList = @($classification)
 
-if ($OutputPath) {
-    $resolvedOutput = $OutputPath
-    if (-not [System.IO.Path]::IsPathRooted($OutputPath)) {
-        $resolvedOutput = Join-Path -Path (Get-Location) -ChildPath $OutputPath
-    }
+$shouldWriteCsv = -not [string]::IsNullOrWhiteSpace($OutputPath)
+$shouldWriteExcel = -not [string]::IsNullOrWhiteSpace($ExcelOutputPath)
 
+if ($shouldWriteCsv) {
+    $resolvedOutput = Resolve-OutputPath -PathValue $OutputPath
     $classificationList | Export-Csv -Path $resolvedOutput -NoTypeInformation -Encoding UTF8
     Write-Host "Saved classification for $($classificationList.Length) entries to '$resolvedOutput'." -ForegroundColor Green
 }
 
-if ($PassThru -or -not $OutputPath) {
+if ($shouldWriteExcel) {
+    Assert-ImportExcelModule
+    $resolvedExcelOutput = Resolve-OutputPath -PathValue $ExcelOutputPath
+    try {
+        $classificationList | Export-Excel -Path $resolvedExcelOutput -WorksheetName "Groups" -TableName "GroupOrigins" -AutoSize
+    }
+    catch {
+        throw "Failed to export Excel file: $($_.Exception.Message)"
+    }
+
+    Write-Host "Saved Excel classification for $($classificationList.Length) entries to '$resolvedExcelOutput'." -ForegroundColor Green
+}
+
+if ($PassThru -or -not $shouldWriteCsv) {
     $classificationList
 }
