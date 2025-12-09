@@ -46,7 +46,7 @@ param(
         "DEV-LAMBDAPV-cloud",
         "DEV-MANAGEMENT-cloud",
         "DEV-NILDA2-cloud",
-        "DEV-OPVS–CargoRail",
+        "DEV-OPVS-CargoRail",
         "DEV-PRESERVICA-cloud",
         "DEV-VADDVS",
         "Dots-Sales",
@@ -168,7 +168,20 @@ function Classify-Group {
     $onPremSid = Get-ObjectPropertyValue -InputObject $Group -PropertyName @("OnPremisesSecurityIdentifier", "onPremisesSecurityIdentifier")
     $groupTypes = Get-ObjectPropertyValue -InputObject $Group -PropertyName @("GroupTypes", "groupTypes")
 
-    $origin = if (($onPremSync -eq $true) -or (-not [string]::IsNullOrWhiteSpace($onPremSid))) { "OnPrem" } else { "Cloud" }
+    $origin = "Cloud"
+    if (($onPremSync -eq $true) -or (-not [string]::IsNullOrWhiteSpace($onPremSid))) {
+        $origin = "OnPrem"
+    }
+
+    $groupTypeString = $null
+    if ($groupTypes) {
+        $groupTypeString = ($groupTypes -join '|')
+    }
+
+    $matchIndexValue = 1
+    if ($TotalMatches -gt 1) {
+        $matchIndexValue = $MatchIndex
+    }
 
     [PSCustomObject]@{
         RequestedName = $RequestedName
@@ -177,8 +190,8 @@ function Classify-Group {
         Origin = $origin
         OnPremisesSyncEnabled = $onPremSync
         OnPremisesSecurityIdentifier = $onPremSid
-        GroupTypes = if ($groupTypes) { ($groupTypes -join '|') } else { $null }
-        MatchIndex = if ($TotalMatches -gt 1) { $MatchIndex } else { 1 }
+        GroupTypes = $groupTypeString
+        MatchIndex = $matchIndexValue
         TotalMatches = $TotalMatches
     }
 }
