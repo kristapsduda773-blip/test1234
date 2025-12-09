@@ -199,7 +199,8 @@ function Classify-Group {
 Assert-GraphModuleLoaded
 Ensure-GraphConnection
 
-if (-not $GroupNames -or $GroupNames.Count -eq 0) {
+$groupNameCount = @($GroupNames).Length
+if ($groupNameCount -eq 0) {
     throw "At least one group name is required."
 }
 
@@ -219,14 +220,15 @@ foreach ($name in $GroupNames) {
     }
 }
 
-if ($normalizedNames.Count -eq 0) {
+$normalizedCount = @($normalizedNames).Length
+if ($normalizedCount -eq 0) {
     throw "All supplied group names were empty."
 }
 
 $classification = @()
 foreach ($groupName in $normalizedNames) {
     try {
-        $matches = Get-GroupMatches -DisplayName $groupName
+        $matches = @(Get-GroupMatches -DisplayName $groupName)
     }
     catch {
         $classification += [PSCustomObject]@{
@@ -244,7 +246,7 @@ foreach ($groupName in $normalizedNames) {
         continue
     }
 
-    if ($matches.Count -eq 0) {
+    if ($matches.Length -eq 0) {
         $classification += [PSCustomObject]@{
             RequestedName = $groupName
             ResolvedName = $null
@@ -263,9 +265,11 @@ foreach ($groupName in $normalizedNames) {
     $index = 0
     foreach ($match in $matches) {
         $index++
-        $classification += Classify-Group -RequestedName $groupName -Group $match -MatchIndex $index -TotalMatches $matches.Count
+        $classification += Classify-Group -RequestedName $groupName -Group $match -MatchIndex $index -TotalMatches $matches.Length
     }
 }
+
+$classificationList = @($classification)
 
 if ($OutputPath) {
     $resolvedOutput = $OutputPath
@@ -273,10 +277,10 @@ if ($OutputPath) {
         $resolvedOutput = Join-Path -Path (Get-Location) -ChildPath $OutputPath
     }
 
-    $classification | Export-Csv -Path $resolvedOutput -NoTypeInformation -Encoding UTF8
-    Write-Host "Saved classification for $($classification.Count) entries to '$resolvedOutput'." -ForegroundColor Green
+    $classificationList | Export-Csv -Path $resolvedOutput -NoTypeInformation -Encoding UTF8
+    Write-Host "Saved classification for $($classificationList.Length) entries to '$resolvedOutput'." -ForegroundColor Green
 }
 
 if ($PassThru -or -not $OutputPath) {
-    $classification
+    $classificationList
 }
