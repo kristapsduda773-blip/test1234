@@ -100,6 +100,24 @@ function Ensure-GraphConnection {
 
 Ensure-GraphConnection
 
+function Prepare-ExcelDestination {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $directory = Split-Path -Path $Path -Parent
+    if ($directory -and -not (Test-Path -LiteralPath $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $Path) {
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+        }
+        catch {
+            throw "Cannot overwrite the existing Excel file '$Path'. Close it (or choose a new -ExcelOutputPath) and rerun. Inner error: $($_.Exception.Message)"
+        }
+    }
+}
+
 $cleanNames = @()
 foreach ($name in $GroupNames) {
     if ([string]::IsNullOrWhiteSpace($name)) {
@@ -166,7 +184,15 @@ else {
     Join-Path -Path (Get-Location) -ChildPath $ExcelOutputPath
 }
 
-$results | Export-Excel -Path $resolvedExcelPath -WorksheetName "Groups" -TableName "GroupOrigin" -BoldTopRow -AutoSize -FreezeTopRow
+Prepare-ExcelDestination -Path $resolvedExcelPath
+
+try {
+    $results | Export-Excel -Path $resolvedExcelPath -WorksheetName "Groups" -TableName "GroupOrigin" -BoldTopRow -AutoSize -FreezeTopRow -ErrorAction Stop
+}
+catch {
+    throw "Failed to write the Excel workbook to '$resolvedExcelPath'. Ensure the ImportExcel module is up-to-date and the file is not locked by another application. Inner error: $($_.Exception.Message)"
+}
+
 Write-Host "Saved $($results.Count) rows to '$resolvedExcelPath'." -ForegroundColor Green
 
 $results
